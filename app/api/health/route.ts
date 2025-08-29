@@ -1,24 +1,26 @@
 ﻿import { NextResponse } from "next/server";
 
+// every place your frontend can live
 const ALLOWED_ORIGINS = [
-  "http://localhost:8080",                 // local Lovable preview
-  "https://lovable.dev",                   // Lovable editor
-  "https://onepage-test.lovable.app",      // your published Lovable site (adjust if your slug differs)
-  "https://onepage-test-rieu.vercel.app",  // your Vercel API app
+  "http://localhost:8080",                // local Lovable preview (Vite)
+  "https://lovable.dev",                  // Lovable editor
+  "https://onepage-test.lovable.app",     // your published Lovable site
+  "https://onepage-test-rieu.vercel.app", // your Vercel API domain
 ];
 
 function makeCorsHeaders(origin: string | null) {
+  // allow lovable.dev and any exact matches in the list
   const allow =
-    origin && ALLOWED_ORIGINS.includes(origin) ? origin : "false-origin";
+    (origin &&
+      (origin.startsWith("https://lovable.dev") ||
+       ALLOWED_ORIGINS.includes(origin))) ? origin : "*";
 
-  const headers: Record<string, string> = {
+  return {
     "Access-Control-Allow-Origin": allow,
     "Access-Control-Allow-Methods": "GET,OPTIONS",
-    // default allow; the OPTIONS handler will overwrite this to echo requested headers
     "Access-Control-Allow-Headers": "Content-Type",
     "Vary": "Origin",
   };
-  return headers;
 }
 
 export async function GET(req: Request) {
@@ -30,10 +32,6 @@ export async function GET(req: Request) {
 export async function OPTIONS(req: Request) {
   const origin = req.headers.get("origin");
   const headers = makeCorsHeaders(origin);
-
-  // Echo back what the browser says it wants to send (fixes editor “Failed to fetch”)
-  const requested = req.headers.get("access-control-request-headers");
-  if (requested) headers["Access-Control-Allow-Headers"] = requested;
-
-  return NextResponse.json({}, { headers });
+  // some browsers prefer 204 for preflight
+  return new NextResponse(null, { status: 204, headers });
 }
