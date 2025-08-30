@@ -1,62 +1,59 @@
+// app/api/perplexity-test/route.ts
 import { NextResponse } from "next/server";
 
-// Quick heartbeat so you can test in a browser with GET
+// Accept either PERPLEXITY_API_KEY or PPLX_API_KEY
+const PPLX_KEY =
+  process.env.PERPLEXITY_API_KEY || process.env.PPLX_API_KEY || "";
+
+// Minimal types for Perplexity response
+type PplxMessage = { role: "system" | "user" | "assistant"; content: string };
+type PplxChoice = { message: PplxMessage };
+type PplxResponse = { choices?: PplxChoice[] };
+
 export async function GET() {
-  return NextResponse.json({ ok: true, message: "Perplexity endpoint is up ✅" });
+  return NextResponse.json({ ok: true, message: "Perplexity endpoint is alive" });
 }
 
-// Ask Perplexity with POST { "question": "your prompt here" }
 export async function POST(req: Request) {
   try {
-    const apiKey = process.env.PPLX_API_KEY;
-    if (!apiKey) {
+    if (!PPLX_KEY) {
       return NextResponse.json(
-        { ok: false, error: "Missing PPLX_API_KEY in environment." },
+        { ok: false, error: "Missing PERPLEXITY_API_KEY on server" },
         { status: 500 }
       );
     }
 
-    // Read the prompt from the request body
-    const body = await req.json().catch(() => ({}));
-    const question =
-      typeof body?.question === "string" && body.question.trim().length > 0
-        ? body.question.trim()
-        : "Say hello from Perplexity in one short sentence.";
+    const body = (await req.json()) as { prompt?: string };
+    const prompt = body?.prompt ?? "Say hello";
 
-    // Perplexity uses an OpenAI-style Chat Completions endpoint
-    const resp = await fetch("https://api.perplexity.ai/chat/completions", {
+    const pplxRes = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        Authorization: `Bearer ${PPLX_KEY}`,
       },
       body: JSON.stringify({
-        model: "sonar", // you can try: "sonar", "sonar-small-chat", etc.
-        messages: [
-          { role: "system", content: "You are a concise helpful assistant." },
-          { role: "user", content: question },
-        ],
-        temperature: 0.2,
-        max_tokens: 300,
+        model: "sonar", // or another Perplexity model you enabled
+        messages: [{ role: "user", content: prompt }],
       }),
     });
 
-    if (!resp.ok) {
-      const text = await resp.text();
+    if (!pplxRes.ok) {
       return NextResponse.json(
-        { ok: false, error: `HTTP ${resp.status}`, details: text.slice(0, 500) },
-        { status: resp.status }
+        { ok: false, error: `HTTP ${pplxRes.status}` },
+        { status: pplxRes.status }
       );
     }
 
-    const data = await resp.json();
-    const answer = data?.choices?.[0]?.message?.content ?? null;
+    const data = (await pplxRes.json()) as PplxResponse;
+    const text =
+      data.choices && data.choices[0]?.message?.content
+        ? data.choices[0].message.content
+        : "";
 
-    return NextResponse.json({ ok: true, answer, raw: data });
-  } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: String(err?.message ?? err) },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, text });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
